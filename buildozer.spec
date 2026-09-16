@@ -14,3 +14,5 @@ android.minapi = 21
 android.sdk = 31
 android.ndk = 25b
 android.archs = arm64-v8a
+android.skip_update = False
+android.accept_sdk_license = True
