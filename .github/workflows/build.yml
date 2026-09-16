@@ -2,87 +2,212 @@ name: Build Android APK
 
 on:
   workflow_dispatch:
+
   push:
     branches:
       - main
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    name: Build APK
+    runs-on: ubuntu-24.04
 
     steps:
+
+      # --------------------------------------------------
+      # 1. Получаем проект
+      # --------------------------------------------------
+
       - name: Checkout
         uses: actions/checkout@v4
+
+
+      # --------------------------------------------------
+      # 2. Python
+      # --------------------------------------------------
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
 
+
+      # --------------------------------------------------
+      # 3. Java
+      # --------------------------------------------------
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+
+      # --------------------------------------------------
+      # 4. Системные зависимости
+      # --------------------------------------------------
+
       - name: Install system dependencies
         run: |
           sudo apt-get update
+
           sudo apt-get install -y \
             git \
             zip \
             unzip \
-            openjdk-17-jdk \
             autoconf \
             automake \
+            autopoint \
             libtool \
             pkg-config \
             zlib1g-dev \
             libncurses5-dev \
             libncursesw5-dev \
+            libtinfo6 \
             cmake \
             libffi-dev \
-            libssl-dev
+            libssl-dev \
+            gettext
+
+
+      # --------------------------------------------------
+      # 5. Проверяем Android SDK
+      # --------------------------------------------------
+
+      - name: Check Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          echo "ANDROID_NDK_ROOT=$ANDROID_NDK_ROOT"
+
+          echo ""
+          echo "Installed Build Tools:"
+          ls -la "$ANDROID_HOME/build-tools"
+
+          echo ""
+          echo "Installed NDK:"
+          ls -la "$ANDROID_HOME/ndk"
+
+          echo ""
+          echo "Checking AIDL:"
+          ls -la "$ANDROID_HOME/build-tools/35.0.0/aidl"
+
+          echo ""
+          echo "Testing AIDL:"
+          "$ANDROID_HOME/build-tools/35.0.0/aidl" --help >/dev/null
+
+          echo "AIDL OK"
+
+
+      # --------------------------------------------------
+      # 6. Проверяем Android API 35
+      # --------------------------------------------------
+
+      - name: Check Android API
+        run: |
+          test -d "$ANDROID_HOME/platforms/android-35"
+
+          echo "Android API 35 OK"
+
+
+      # --------------------------------------------------
+      # 7. Проверяем NDK 28c
+      # --------------------------------------------------
+
+      - name: Check Android NDK
+        run: |
+          test -d "$ANDROID_HOME/ndk/28.2.13676358"
+
+          echo "NDK 28c OK"
+
+          cat "$ANDROID_HOME/ndk/28.2.13676358/source.properties"
+
+
+      # --------------------------------------------------
+      # 8. Устанавливаем Buildozer
+      # --------------------------------------------------
 
       - name: Install Buildozer
         run: |
-          python -m pip install --upgrade pip
+          python -m pip install --upgrade pip setuptools wheel
+
           pip install buildozer
+
           pip install "cython==0.29.34"
 
-      - name: Install Android SDK
+
+      # --------------------------------------------------
+      # 9. Показываем версии
+      # --------------------------------------------------
+
+      - name: Check Buildozer
         run: |
-          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          buildozer --version
+          python --version
+          javac -version
 
-          yes | "$SDKMANAGER" --licenses > /dev/null || true
 
-          "$SDKMANAGER" \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
+      # --------------------------------------------------
+      # 10. Чистим старые файлы
+      # --------------------------------------------------
 
-          echo "ANDROIDSDK=$ANDROID_HOME" >> "$GITHUB_ENV"
-          echo "ANDROIDNDK=$ANDROID_NDK_ROOT" >> "$GITHUB_ENV"
-          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
-          echo "$ANDROID_HOME/build-tools/35.0.0" >> "$GITHUB_PATH"
-
-      - name: Verify Android SDK
+      - name: Clean previous build
         run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_NDK_ROOT=$ANDROID_NDK_ROOT"
-
-          ls -la "$ANDROID_HOME/build-tools/35.0.0"
-
-          test -f "$ANDROID_HOME/build-tools/35.0.0/aidl"
-
-          "$ANDROID_HOME/build-tools/35.0.0/aidl" --version
-
-      - name: Clean Buildozer
-        run: |
-          rm -rf ~/.buildozer
           rm -rf .buildozer
           rm -rf bin
+          rm -rf ~/.buildozer
+
+
+      # --------------------------------------------------
+      # 11. Финальная проверка Buildozer SDK
+      # --------------------------------------------------
+
+      - name: Verify Buildozer configuration
+        run: |
+          echo "SDK:"
+          grep -E "^android.sdk_path" buildozer.spec
+
+          echo "NDK:"
+          grep -E "^android.ndk_path" buildozer.spec
+
+          echo "API:"
+          grep -E "^android.api" buildozer.spec
+
+          echo "Architectures:"
+          grep -E "^android.archs" buildozer.spec
+
+
+      # --------------------------------------------------
+      # 12. Сборка APK
+      # --------------------------------------------------
 
       - name: Build APK
         run: |
           buildozer android debug
+
+
+      # --------------------------------------------------
+      # 13. Проверяем результат
+      # --------------------------------------------------
+
+      - name: Check APK
+        run: |
+          echo "APK files:"
+
+          find bin -type f -name "*.apk" -print
+
+          test -n "$(find bin -type f -name '*.apk' -print -quit)"
+
+          echo "APK successfully created!"
+
+
+      # --------------------------------------------------
+      # 14. Загружаем APK
+      # --------------------------------------------------
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: school-helper-apk
           path: bin/*.apk
+          if-no-files-found: error
