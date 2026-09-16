@@ -29,6 +29,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
+
           sudo apt-get install -y \
             git \
             zip \
@@ -37,6 +38,8 @@ jobs:
             automake \
             autopoint \
             libtool \
+            libtool-bin \
+            libltdl-dev \
             pkg-config \
             zlib1g-dev \
             libncurses5-dev \
@@ -49,6 +52,10 @@ jobs:
 
       - name: Check Android SDK
         run: |
+          echo "========================================"
+          echo "ANDROID ENVIRONMENT"
+          echo "========================================"
+
           echo "ANDROID_HOME=$ANDROID_HOME"
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
           echo "ANDROID_NDK_ROOT=$ANDROID_NDK_ROOT"
@@ -58,36 +65,62 @@ jobs:
           ls -la "$ANDROID_HOME/build-tools"
 
           echo ""
+          echo "Installed Android platforms:"
+          ls -la "$ANDROID_HOME/platforms"
+
+          echo ""
           echo "Installed NDK:"
           ls -la "$ANDROID_HOME/ndk"
 
           echo ""
           echo "Checking AIDL:"
-          ls -la "$ANDROID_HOME/build-tools/35.0.0/aidl"
+          find "$ANDROID_HOME/build-tools" -name aidl -type f -print
 
           echo ""
           echo "Testing AIDL:"
-          "$ANDROID_HOME/build-tools/35.0.0/aidl" --help >/dev/null
+          AIDL=$(find "$ANDROID_HOME/build-tools" -name aidl -type f | sort -V | tail -n 1)
+
+          if [ -z "$AIDL" ]; then
+            echo "ERROR: AIDL not found"
+            exit 1
+          fi
+
+          echo "Using AIDL: $AIDL"
+          "$AIDL" --help >/dev/null
 
           echo "AIDL OK"
 
       - name: Fix sdkmanager path for Buildozer
         run: |
-          echo "Searching for sdkmanager..."
+          echo "========================================"
+          echo "SDKMANAGER"
+          echo "========================================"
 
-          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" \
+            -type f \
+            -name sdkmanager \
+            | head -n 1)
 
           if [ -z "$SDKMANAGER" ]; then
             echo "ERROR: sdkmanager not found"
-            find "$ANDROID_HOME/cmdline-tools" -maxdepth 5 -type f | head -100
+
+            echo ""
+            echo "cmdline-tools contents:"
+            find "$ANDROID_HOME/cmdline-tools" \
+              -maxdepth 5 \
+              -type f \
+              | head -100
+
             exit 1
           fi
 
-          echo "Found sdkmanager: $SDKMANAGER"
+          echo "Found sdkmanager:"
+          echo "$SDKMANAGER"
 
           mkdir -p "$ANDROID_HOME/tools/bin"
 
-          ln -sf "$SDKMANAGER" "$ANDROID_HOME/tools/bin/sdkmanager"
+          ln -sf "$SDKMANAGER" \
+            "$ANDROID_HOME/tools/bin/sdkmanager"
 
           echo ""
           echo "Buildozer sdkmanager path:"
@@ -99,59 +132,179 @@ jobs:
 
       - name: Check Android API
         run: |
-          test -d "$ANDROID_HOME/platforms/android-35"
+          echo "========================================"
+          echo "ANDROID API"
+          echo "========================================"
+
+          if [ ! -d "$ANDROID_HOME/platforms/android-35" ]; then
+            echo "ERROR: Android API 35 not found"
+            exit 1
+          fi
+
           echo "Android API 35 OK"
 
       - name: Check Android NDK
         run: |
-          test -d "$ANDROID_HOME/ndk/28.2.13676358"
+          echo "========================================"
+          echo "ANDROID NDK"
+          echo "========================================"
+
+          if [ ! -d "$ANDROID_HOME/ndk/28.2.13676358" ]; then
+            echo "ERROR: Android NDK 28.2.13676358 not found"
+            exit 1
+          fi
+
           echo "Android NDK 28.2.13676358 OK"
+
+          echo ""
+          echo "NDK source.properties:"
           cat "$ANDROID_HOME/ndk/28.2.13676358/source.properties"
+
+      - name: Check Autotools
+        run: |
+          echo "========================================"
+          echo "AUTOTOOLS"
+          echo "========================================"
+
+          echo ""
+          echo "Autoconf:"
+          autoconf --version
+
+          echo ""
+          echo "Automake:"
+          automake --version
+
+          echo ""
+          echo "Libtool:"
+          libtool --version
+
+          echo ""
+          echo "Libtoolize:"
+          libtoolize --version
+
+          echo ""
+          echo "Libtool macro files:"
+          find /usr/share \
+            -type f \
+            \( -name "libtool.m4" -o -name "ltdl.m4" \) \
+            2>/dev/null \
+            | head -30
 
       - name: Install Buildozer
         run: |
           python -m pip install --upgrade pip setuptools wheel
+
           pip install buildozer
+
           pip install "cython==0.29.34"
 
       - name: Check Buildozer
         run: |
+          echo "========================================"
+          echo "BUILD ENVIRONMENT"
+          echo "========================================"
+
+          echo ""
+          echo "Buildozer:"
           buildozer --version
+
+          echo ""
+          echo "Python:"
           python --version
+
+          echo ""
+          echo "Java:"
           javac -version
+
+          echo ""
+          echo "Pip:"
+          pip --version
 
       - name: Clean previous build
         run: |
+          echo "Cleaning Buildozer cache..."
+
           rm -rf .buildozer
           rm -rf bin
           rm -rf ~/.buildozer
 
+          echo "Clean complete."
+
       - name: Verify Buildozer configuration
         run: |
+          echo "========================================"
+          echo "BUILDOZER CONFIGURATION"
+          echo "========================================"
+
+          echo ""
           echo "SDK:"
-          grep -E "^android.sdk_path" buildozer.spec
+          grep -E "^android.sdk_path" buildozer.spec || true
 
+          echo ""
           echo "NDK:"
-          grep -E "^android.ndk_path" buildozer.spec
+          grep -E "^android.ndk_path" buildozer.spec || true
 
+          echo ""
+          echo "NDK version:"
+          grep -E "^android.ndk" buildozer.spec || true
+
+          echo ""
           echo "API:"
-          grep -E "^android.api" buildozer.spec
+          grep -E "^android.api" buildozer.spec || true
 
+          echo ""
+          echo "Min API:"
+          grep -E "^android.minapi" buildozer.spec || true
+
+          echo ""
           echo "Architectures:"
-          grep -E "^android.archs" buildozer.spec
+          grep -E "^android.archs" buildozer.spec || true
+
+          echo ""
+          echo "Requirements:"
+          grep -E "^requirements" buildozer.spec || true
 
       - name: Build APK
         run: |
+          echo "========================================"
+          echo "BUILDING APK"
+          echo "========================================"
+
           buildozer android debug
 
       - name: Check APK
         run: |
+          echo "========================================"
+          echo "CHECK APK"
+          echo "========================================"
+
+          echo ""
           echo "APK files:"
-          find bin -type f -name "*.apk" -print
 
-          test -n "$(find bin -type f -name '*.apk' -print -quit)"
+          find bin \
+            -type f \
+            -name "*.apk" \
+            -print
 
-          echo "APK successfully created!"
+          echo ""
+
+          APK=$(find bin \
+            -type f \
+            -name "*.apk" \
+            -print \
+            -quit)
+
+          if [ -z "$APK" ]; then
+            echo "ERROR: APK was not created"
+            exit 1
+          fi
+
+          echo "APK successfully created:"
+          echo "$APK"
+
+          echo ""
+          echo "APK size:"
+          ls -lh "$APK"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
