@@ -1,38 +1,23 @@
-name: Build APK
+- name: Install Android SDK components
+  run: |
+    SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
 
-on:
-  push:
-    branches: [ main ]
+    yes | "$SDKMANAGER" --licenses || true
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
+    "$SDKMANAGER" \
+      "platform-tools" \
+      "platforms;android-35" \
+      "build-tools;35.0.0"
 
-    steps:
-    - uses: actions/checkout@v4
+    echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
+    echo "$ANDROID_HOME/build-tools/35.0.0" >> $GITHUB_PATH
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
+- name: Clean Buildozer
+  run: |
+    rm -rf ~/.buildozer
+    rm -rf .buildozer
+    rm -rf bin
 
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential git openjdk-17-jdk zlib1g-dev libffi-dev libssl-dev libncurses5-dev libstdc++6 autoconf libtool pkg-config patch
-
-    - name: Install Buildozer and Cython
-      run: |
-        pip install --upgrade pip
-        pip install --user Cython==0.29.36 buildozer
-
-    - name: Build with Buildozer
-      run: |
-        export PATH=$PATH:~/.local/bin
-        buildozer -v android debug
-
-    - name: Upload APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: package
-        path: bin/*.apk
+- name: Build APK
+  run: |
+    buildozer android debug
